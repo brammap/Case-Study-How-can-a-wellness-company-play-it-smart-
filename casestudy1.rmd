@@ -1,0 +1,118 @@
+getwd()
+setwd("C:/Users/18155/Desktop/OMIS665_rstudio/Fitness")
+
+install.packages("dplyr")
+install.packages("lubridate")
+library(dplyr)
+library(here)
+library(skimr)
+library(janitor)
+library(tidyverse)
+
+#loading excel to the R
+Activity <- read_csv("C:/Users/18155/Desktop/OMIS665_rstudio/Fitness/dailyActivity_Merged.csv")
+colnames(Activity)
+calories <- read_csv("C:/Users/18155/Desktop/OMIS665_rstudio/Fitness/dailyCalories_Merged.csv")
+colnames(calories)
+intensity<- read_csv("C:/Users/18155/Desktop/OMIS665_rstudio/Fitness/dailyIntensities_Merged.csv")
+colnames(intensity)
+sleep1 <- read_csv("C:/Users/18155/Desktop/OMIS665_rstudio/Fitness/sleepDay_Merged.csv")
+colnames(sleep)
+weight <- read_csv("C:/Users/18155/Desktop/OMIS665_rstudio/Fitness/weightLogInfo_merged.csv")
+colnames(weight)
+
+#Looking for duplicates
+sum(duplicated(weight))
+sum(duplicated(sleep))
+sum(duplicated(intensity))
+sum(duplicated(Calories))
+sum(duplicated(Activity))
+
+#Removing duplicates
+sleep <- sleep %>%distinct() %>% drop_na()
+
+#Ensuring there are only charecters,numbers and underscores
+clean_names(sleep)
+clean_names(Activity)
+clean_names(Calories)
+clean_names(intensity)
+clean_names(weight)
+
+names(sleep) <- tolower(names(sleep))
+names(Activity)<- tolower(names(Activity))
+names(calories)<- tolower(names(calories))
+names(intensity)<- tolower(names(intensity))
+names(weight)<- tolower(names(weight))
+
+#cleaning date column and merging data sets
+
+merge(Calories,sleep, by=c("Id"))
+
+#Renaming sleepday to date and converting date in string format to date format
+
+sleep <- sleep %>% 
+  mutate(date = as.Date(date,format ="%y/%m/%d"))
+
+weight <- weight %>% mutate(Date = as.Date(date,format ="%m/%d/%Y %H:%M:%S"))
+
+calories <- calories %>%
+  mutate(date = as.Date(date,format ="%m/%d/%Y"))
+
+glimpse(calories) #has940rows
+glimpse(sleep) #has 410rows
+
+sleep %>% filter(is.na(date))
+
+
+cal_sleep <- merge(calories,sleep, by=c("id","date")) #has 410rows
+glimpse(cal_sleep)
+
+cal_sleep <- cal_sleep %>% mutate(diff=totaltimeinbed-totalminutesasleep) 
+
+
+ggplot(data=cal_sleep,mapping=aes(x=diff,y=Calories))+geom_point()
+
+
+# Correlation between difference in sleep and activity mins. For this, I am going to pivot very active minutes
+#fairly active minutes, Lightly active minutes, sedentary minutes into one column called activemins
+
+piv <- Activity %>% group_by(id) %>% select(activitydate, veryactiveminutes,fairlyactiveminutes,lightlyactiveminutes,sedentaryminutes)
+
+piv2 <- piv %>% pivot_longer(!id,activitydate, names_to = "activitymins",values_to = ".value")
+
+piv2<- piv %>% pivot_longer(cols = c(veryactiveminutes,fairlyactiveminutes,lightlyactiveminutes,sedentaryminutes),
+                     names_to = "activity",
+                     values_to = "minutes")
+    
+
+pivmerge <- merge(piv2,cal_sleep, by=c("id"))
+glimpse(pivmerge)
+pivmerge$ diff<- as.factor(pivmerge$diff)
+
+
+ggplot(data=pivmerge)+geom_bar(mapping=aes(x=activity))
+
+pivmerge %>% count(activity)
+
+# Correlation between difference in sleep and activity mins. For this, I am going to pivot very active minutes
+#fairly active minutes, Lightly active minutes, sedentary minutes into one column called activemins
+
+Activity$activitydate <- as.Date(Activity$activitydate,format="%m/%d/%Y")
+library(lubridate)
+Activity %>% wday(activitydate,label=TRUE, abbr=FALSE)
+Act <- Activity
+Act$weekday <- weekdays(Act$activitydate)
+Act$weekday <- factor(Act$weekday, levels= c("Sunday", "Monday", 
+                                         "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"))
+Act$date <- Act$activitydate
+glimpse(Act)
+glimpse(sleep)
+actmerge <- merge(Act,sleep, by=c("id","date"))
+glimpse(activity_sleep)
+
+activity_sleep <- actmerge %>% group_by(id,weekday) %>% 
+  mutate(sleep_range = case_when(totalminutesasleep/60 <7 ~"Not Enough sleep",
+        totalminutesasleep/60 >= 7 & totalminutesasleep/60 <=9 ~"Enough Sleep",
+        totalminutesasleep/60 > 9  ~"Too Much Sleep"))
+  
+ggplot(data=activity_sleep)+geom_col(mapping=aes(x=weekday,y=calories,fill=sleep_range))
